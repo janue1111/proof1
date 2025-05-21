@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Interactivo de Embudo con IA</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* Tailwind gray-100 */
+        }
+        /* Estilos para scrollbars (opcional, para mejorar estética) */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        .chart-container {
+            position: relative;
+            margin: auto;
+            height: 350px; /* Altura fija para los contenedores de gráficos */
+            width: 100%;   /* Ancho completo del contenedor padre */
+        }
+        canvas {
+            display: block;
+            box-sizing: border-box;
+            height: 100% !important;
+            width: 100% !important;
+        }
+        .message-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: rgba(255, 255, 255, 0.8);
+            z-index: 10;
+        }
+        /* Estilo para el botón de IA */
+        .ai-button {
+            background-color: #4f46e5; /* Indigo-600 */
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 500;
+            transition: background-color 0.3s ease;
+            cursor: pointer;
+        }
+        .ai-button:hover {
+            background-color: #4338ca; /* Indigo-700 */
+        }
+        .ai-button:disabled {
+            background-color: #a5b4fc; /* Indigo-300 */
+            cursor: not-allowed;
+        }
+        /* Contenedor para las sugerencias de IA */
+        #aiSuggestionsContainer {
+            background-color: white;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            margin-top: 2rem;
+        }
+        #aiSuggestionsContent {
+            white-space: pre-wrap; /* Para respetar saltos de línea y espacios en la respuesta de la IA */
+            font-family: 'Inter', sans-serif;
+            color: #374151; /* Gray-700 */
+            line-height: 1.6;
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="p-4 md:p-8">
+
+    <header class="mb-8 text-center">
+        <h1 class="text-3xl md:text-4xl font-bold text-gray-800">Dashboard de Análisis de Embudo con IA</h1>
+        <p class="text-gray-600 mt-2">Visualiza el rendimiento y obtén sugerencias inteligentes para optimizar tu embudo.</p>
+    </header>
+
+    <div class="mb-6 sticky top-4 bg-gray-100 p-4 rounded-lg shadow-md z-20">
+        <label for="searchInput" class="block text-sm font-medium text-gray-700 mb-1">Filtrar por paso:</label>
+        <input type="text" id="searchInput" placeholder="Ej: add to cart, checkout, view..."
+               class="w-full p-3 border border-gray-300 rounded-lg shadow-sm focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out">
+    </div>
+
+    <div id="chartsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        </div>
+    
+    <div id="loadingMessage" class="hidden text-center text-xl text-gray-700 p-10">
+        Cargando datos y gráficos...
+    </div>
+    <div id="noDataMessage" class="hidden text-center text-xl text-red-600 p-10">
+        No se encontraron datos para el filtro aplicado. Intenta con otra búsqueda.
+    </div>
+
+    <div class="my-8 text-center">
+        <button id="getAISuggestionsBtn" class="ai-button">
+            ✨ Obtener Sugerencias con IA
+        </button>
+        <div id="aiLoadingMessage" class="hidden text-center text-lg text-indigo-600 mt-4">
+            <svg class="animate-spin h-5 w-5 mr-3 inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+                <path d="M12 2a10 10 0 0 1 10 10" stroke-opacity="0.75"></path>
+            </svg>
+            Analizando datos y generando sugerencias...
+        </div>
+    </div>
+
+    <div id="aiSuggestionsContainer" class="hidden">
+        <h2 class="text-2xl font-semibold text-gray-800 mb-4">Sugerencias de la IA</h2>
+        <div id="aiSuggestionsContent" class="text-gray-700">
+            </div>
+        <div id="aiErrorMessage" class="hidden text-red-600 mt-4"></div>
+    </div>
+
+
+    <div class="bg-white p-4 sm:p-6 rounded-lg shadow-xl overflow-x-auto">
+        <h2 class="text-xl font-semibold text-gray-700 mb-4">Tabla de Datos Detallados</h2>
+        <div class="overflow-x-auto">
+            <table id="dataTable" class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paso</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usuarios Activos</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">(% del Paso 1)</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">% Finalización</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Abandonos</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">% Abandonos</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    </tbody>
+            </table>
+        </div>
+    </div>
+
+    <footer class="mt-12 text-center text-sm text-gray-500">
+        <p>&copy; <span id="currentYear"></span> Dashboard Interactivo con IA. Todos los derechos reservados.</p>
+    </footer>
+
+    <script>
+        // Datos proporcionados por el usuario (simulando la carga desde el archivo)
+        const rawData = `Paso\tUsuarios activos (porcentaje del paso 1)\tPorcentaje de finalización\tAbandonos\tPorcentaje de abandonos
+1. page view\t83702 (100%)\t13.65%\t72277\t86.35%
+2. view item\t11433 (13.66%)\t29.11%\t8105\t70.89%
+3. add to cart\t3328 (3.98%)\t72.47%\t917\t27.53%
+4. view cart\t2420 (2.89%)\t72.6%\t663\t27.4%
+5. begin_checkout\t1757 (2.1%)\t99.94%\t1\t0.06%
+6. add shipping info\t1756 (2.1%)\t74.6%\t446\t25.4%
+7. add payment info\t1310 (1.57%)\t68.63%\t411\t31.37%
+8. purchase\t899 (1.07%)\t-\t-\t-\t`;
+
+        let chartObjects = {}; 
+        let fullParsedData = []; 
+        let currentFilteredData = []; // Almacena los datos actualmente filtrados para la IA
+
+        // Función para parsear los datos crudos
+        function parseData(textData) {
+            const lines = textData.trim().split('\n');
+            const data = lines.slice(1).map(line => {
+                const values = line.split('\t');
+                const row = {};
+                row.paso = values[0];
+                const usuariosActivosMatch = values[1].match(/(\d+)\s*\((\d+\.?\d*)%\)/);
+                row.usuariosActivosAbsoluto = usuariosActivosMatch ? parseInt(usuariosActivosMatch[1]) : 0;
+                row.usuariosActivosPorcentajePaso1 = usuariosActivosMatch ? parseFloat(usuariosActivosMatch[2]) : 0;
+                row.porcentajeFinalizacion = values[2] === '-' ? 0 : parseFloat(values[2].replace('%', ''));
+                row.abandonosAbsoluto = values[3] === '-' ? 0 : parseInt(values[3]);
+                row.porcentajeAbandonos = values[4] === '-' ? 0 : parseFloat(values[4].replace('%', ''));
+                return row;
+            });
+            return data;
+        }
+
+        function destroyChartIfExists(chartId) {
+            if (chartObjects[chartId]) {
+                chartObjects[chartId].destroy();
+                delete chartObjects[chartId];
+            }
+        }
+
+        function setupChartDOMContainers() {
+            const container = document.getElementById('chartsContainer');
+            if (!container) {
+                console.error("El contenedor de gráficos 'chartsContainer' no fue encontrado.");
+                return;
+            }
+            container.innerHTML = `
+                <div class="bg-white p-4 rounded-lg shadow-lg chart-container"><canvas id="funnelChart"></canvas></div>
+                <div class="bg-white p-4 rounded-lg shadow-lg chart-container"><canvas id="abandonmentRateChart"></canvas></div>
+                <div class="bg-white p-4 rounded-lg shadow-lg chart-container"><canvas id="completionRateChart"></canvas></div>
+                <div class="bg-white p-4 rounded-lg shadow-lg chart-container"><canvas id="absoluteAbandonmentChart"></canvas></div>
+            `;
+        }
+        
+        function renderTable(data) {
+            const tableBody = document.getElementById('dataTable')?.querySelector('tbody');
+            if (!tableBody) {
+                console.error("El cuerpo de la tabla 'dataTable tbody' no fue encontrado.");
+                return;
+            }
+            tableBody.innerHTML = ''; 
+
+            if (data.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-gray-500">No hay datos disponibles para mostrar.</td></tr>';
+                return;
+            }
+
+            data.forEach(item => {
+                const rowHtml = `
+                    <tr class="hover:bg-gray-50 transition-colors duration-150">
+                        <td class="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">${item.paso}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700">${item.usuariosActivosAbsoluto.toLocaleString()}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700">${item.usuariosActivosPorcentajePaso1.toFixed(2)}%</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700">${item.porcentajeFinalizacion.toFixed(2)}%</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700">${item.abandonosAbsoluto.toLocaleString()}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700 ${item.porcentajeAbandonos > 50 ? 'text-red-600 font-semibold' : item.porcentajeAbandonos > 25 ? 'text-yellow-600 font-semibold' : 'text-green-600'}">
+                            ${item.porcentajeAbandonos.toFixed(2)}%
+                        </td>
+                    </tr>
+                `;
+                tableBody.innerHTML += rowHtml;
+            });
+        }
+
+        // --- Funciones para crear cada gráfico ---
+        // 1. Gráfico de Embudo (Usuarios Activos por Paso)
+        function createFunnelChart(data) {
+            const chartId = 'funnelChart';
+            destroyChartIfExists(chartId);
+            const ctx = document.getElementById(chartId)?.getContext('2d');
+             if (!ctx) { console.error(`Canvas con ID ${chartId} no encontrado.`); return; }
+
+            const labels = data.map(item => item.paso.substring(0, 20) + (item.paso.length > 20 ? '...' : '')); 
+            const chartData = data.map(item => item.usuariosActivosAbsoluto);
+
+            chartObjects[chartId] = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Usuarios Activos',
+                        data: chartData,
+                        backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, title: { display: true, text: 'Número de Usuarios', font: { size: 14 }}},
+                        x: { title: { display: true, text: 'Paso del Embudo', font: { size: 14 }}}
+                    },
+                    plugins: {
+                        title: { display: true, text: 'Flujo de Usuarios Activos por Paso (Embudo)', font: { size: 18, weight: 'bold' }, padding: { top: 10, bottom: 20 }},
+                        tooltip: { callbacks: { label: context => `${context.dataset.label || ''}: ${context.parsed.y !== null ? context.parsed.y.toLocaleString() : ''}` }}
+                    }
+                }
+            });
+        }
+
+        // 2. Gráfico de Porcentaje de Abandono por Paso
+        function createAbandonmentRateChart(data) {
+            const chartId = 'abandonmentRateChart';
+            destroyChartIfExists(chartId);
+            const ctx = document.getElementById(chartId)?.getContext('2d');
+            if (!ctx) { console.error(`Canvas con ID ${chartId} no encontrado.`); return; }
+
+            const labels = data.map(item => item.paso.substring(0, 20) + (item.paso.length > 20 ? '...' : ''));
+            const chartData = data.map(item => item.porcentajeAbandonos);
+            
+            const backgroundColors = data.map(item => {
+                if (item.porcentajeAbandonos > 75) return 'rgba(239, 68, 68, 0.7)'; 
+                if (item.porcentajeAbandonos > 50) return 'rgba(249, 115, 22, 0.7)'; 
+                if (item.porcentajeAbandonos > 25) return 'rgba(234, 179, 8, 0.7)'; 
+                return 'rgba(34, 197, 94, 0.7)'; 
+            });
+            const borderColors = backgroundColors.map(color => color.replace('0.7', '1'));
+
+            chartObjects[chartId] = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '% de Abandonos',
+                        data: chartData,
+                        backgroundColor: backgroundColors,
+                        borderColor: borderColors,
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, max: 100, title: { display: true, text: 'Porcentaje (%)', font: { size: 14 }}, ticks: { callback: value => value + '%' }},
+                        x: { title: { display: true, text: 'Paso del Embudo', font: { size: 14 }}}
+                    },
+                    plugins: {
+                        title: { display: true, text: 'Tasa de Abandono por Paso', font: { size: 18, weight: 'bold' }, padding: { top: 10, bottom: 20 }},
+                        tooltip: { callbacks: { label: context => `${context.dataset.label || ''}: ${context.parsed.y.toFixed(2)}%` }},
+                        legend: { display: false } 
+                    }
+                }
+            });
+        }
+
+        // 3. Gráfico de Porcentaje de Finalización por Paso
+        function createCompletionRateChart(data) {
+            const chartId = 'completionRateChart';
+            destroyChartIfExists(chartId);
+            const ctx = document.getElementById(chartId)?.getContext('2d');
+            if (!ctx) { console.error(`Canvas con ID ${chartId} no encontrado.`); return; }
+
+            const labels = data.map(item => item.paso.substring(0, 20) + (item.paso.length > 20 ? '...' : ''));
+            const chartData = data.map(item => item.porcentajeFinalizacion);
+
+            const backgroundColors = data.map(item => {
+                if (item.porcentajeFinalizacion >= 75) return 'rgba(34, 197, 94, 0.7)';
+                if (item.porcentajeFinalizacion >= 50) return 'rgba(234, 179, 8, 0.7)';
+                if (item.porcentajeFinalizacion >= 25) return 'rgba(249, 115, 22, 0.7)';
+                return 'rgba(239, 68, 68, 0.7)';
+            });
+            const borderColors = backgroundColors.map(color => color.replace('0.7', '1'));
+
+            chartObjects[chartId] = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '% de Finalización',
+                        data: chartData,
+                        backgroundColor: backgroundColors,
+                        borderColor: borderColors,
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, max: 100, title: { display: true, text: 'Porcentaje (%)', font: { size: 14 }}, ticks: { callback: value => value + '%' }},
+                        x: { title: { display: true, text: 'Paso del Embudo', font: { size: 14 }}}
+                    },
+                    plugins: {
+                        title: { display: true, text: 'Tasa de Finalización por Paso', font: { size: 18, weight: 'bold' }, padding: { top: 10, bottom: 20 }},
+                        tooltip: { callbacks: { label: context => `${context.dataset.label || ''}: ${context.parsed.y.toFixed(2)}%` }},
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
+        // 4. Gráfico de Número Absoluto de Abandonos por Paso
+        function createAbsoluteAbandonmentChart(data) {
+            const chartId = 'absoluteAbandonmentChart';
+            destroyChartIfExists(chartId);
+            const ctx = document.getElementById(chartId)?.getContext('2d');
+            if (!ctx) { console.error(`Canvas con ID ${chartId} no encontrado.`); return; }
+
+            const labels = data.map(item => item.paso.substring(0, 20) + (item.paso.length > 20 ? '...' : ''));
+            const chartData = data.map(item => item.abandonosAbsoluto);
+            
+            const backgroundColors = data.map(item => {
+                const maxAbandonos = Math.max(...data.map(d => d.abandonosAbsoluto), 1); 
+                const ratio = item.abandonosAbsoluto / maxAbandonos;
+                if (ratio > 0.66) return 'rgba(220, 38, 38, 0.7)'; 
+                if (ratio > 0.33) return 'rgba(245, 158, 11, 0.7)'; 
+                return 'rgba(163, 230, 53, 0.7)'; 
+            });
+            const borderColors = backgroundColors.map(color => color.replace('0.7', '1'));
+
+            chartObjects[chartId] = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Número de Abandonos',
+                        data: chartData,
+                        backgroundColor: backgroundColors,
+                        borderColor: borderColors,
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, title: { display: true, text: 'Número de Usuarios', font: { size: 14 }}},
+                        x: { title: { display: true, text: 'Paso del Embudo', font: { size: 14 }}}
+                    },
+                    plugins: {
+                        title: { display: true, text: 'Número Absoluto de Abandonos por Paso', font: { size: 18, weight: 'bold' }, padding: { top: 10, bottom: 20 }},
+                        tooltip: { callbacks: { label: context => `${context.dataset.label || ''}: ${context.parsed.y !== null ? context.parsed.y.toLocaleString() : ''}` }},
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
+
+        function updateDashboard(filterText = '') {
+            const loadingMsg = document.getElementById('loadingMessage');
+            const noDataMsg = document.getElementById('noDataMessage');
+            const chartsCont = document.getElementById('chartsContainer');
+            
+            if (loadingMsg) loadingMsg.classList.remove('hidden');
+            if (noDataMsg) noDataMsg.classList.add('hidden');
+            if (chartsCont) chartsCont.classList.add('hidden');
+
+            setTimeout(() => {
+                currentFilteredData = filterText
+                    ? fullParsedData.filter(item => item.paso.toLowerCase().includes(filterText.toLowerCase()))
+                    : fullParsedData;
+
+                renderTable(currentFilteredData);
+
+                if (currentFilteredData.length === 0) {
+                    if (noDataMsg) noDataMsg.classList.remove('hidden');
+                     Object.keys(chartObjects).forEach(destroyChartIfExists);
+                } else {
+                    if (noDataMsg) noDataMsg.classList.add('hidden');
+                    createFunnelChart(currentFilteredData);
+                    createAbandonmentRateChart(currentFilteredData);
+                    createCompletionRateChart(currentFilteredData);
+                    createAbsoluteAbandonmentChart(currentFilteredData);
+                }
+                
+                if (loadingMsg) loadingMsg.classList.add('hidden');
+                if (chartsCont) chartsCont.classList.remove('hidden');
+
+            }, 250); 
+        }
+
+        // --- Funciones para la Integración con Gemini API ---
+        async function getAISuggestions() {
+            const aiButton = document.getElementById('getAISuggestionsBtn');
+            const aiLoadingMsg = document.getElementById('aiLoadingMessage');
+            const aiSuggestionsContainer = document.getElementById('aiSuggestionsContainer');
+            const aiSuggestionsContent = document.getElementById('aiSuggestionsContent');
+            const aiErrorMsg = document.getElementById('aiErrorMessage');
+
+            if (!currentFilteredData || currentFilteredData.length === 0) {
+                aiErrorMsg.textContent = "No hay datos para analizar. Por favor, asegúrate de que el embudo de datos esté cargado.";
+                aiErrorMsg.classList.remove('hidden');
+                aiSuggestionsContainer.classList.remove('hidden'); 
+                aiSuggestionsContent.innerHTML = ''; 
+                return;
+            }
+
+            aiButton.disabled = true;
+            aiLoadingMsg.classList.remove('hidden');
+            aiSuggestionsContainer.classList.add('hidden'); 
+            aiSuggestionsContent.innerHTML = '';
+            aiErrorMsg.classList.add('hidden');
+
+            let dataSummary = "Datos del embudo de conversión para un e-commerce de zapatos escolares para hombres, cuyos clientes suelen ser padres de familia de entre 24 y 45 años:\n";
+            currentFilteredData.forEach(item => {
+                dataSummary += `- Paso: ${item.paso}, Usuarios Activos: ${item.usuariosActivosAbsoluto}, % Finalización: ${item.porcentajeFinalizacion.toFixed(2)}%, Abandonos: ${item.abandonosAbsoluto}, % Abandonos: ${item.porcentajeAbandonos.toFixed(2)}%\n`;
+            });
+
+            const prompt = `
+Eres un experto analista de conversión de negocios, especializado en e-commerce.
+Analiza los siguientes datos de un embudo de conversión de un sitio web o aplicación que vende zapatos escolares para hombres. Los clientes principales son padres de familia de entre 24 y 45 años.
+
+Considerando este contexto específico (e-commerce de zapatos escolares para hombres, padres como clientes):
+1. Identifica los principales cuellos de botella (pasos con altas tasas de abandono o bajas tasas de finalización).
+2. Proporciona al menos 3 sugerencias concretas y accionables para mejorar el rendimiento en esos puntos críticos.
+3. Explica brevemente por qué cada sugerencia podría ser efectiva, teniendo en cuenta el tipo de producto y el público objetivo.
+Sé conciso, directo y ofrece consejos prácticos que el dueño del negocio pueda implementar.
+
+${dataSummary}
+
+Sugerencias Específicas para E-commerce de Zapatos Escolares (Hombres, Padres de Familia):
+            `;
+
+            const apiKey = ""; 
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+            
+            const payload = {
+                contents: [{ role: "user", parts: [{ text: prompt }] }]
+            };
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error('Error de la API de Gemini:', errorData);
+                    throw new Error(`Error ${response.status}: ${errorData.error?.message || 'No se pudo obtener respuesta de la IA.'}`);
+                }
+
+                const result = await response.json();
+                
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+                    aiSuggestionsContent.textContent = text;
+                } else {
+                    throw new Error('Respuesta inesperada o vacía de la IA.');
+                }
+                aiSuggestionsContainer.classList.remove('hidden');
+
+            } catch (error) {
+                console.error('Error al obtener sugerencias de IA:', error);
+                aiErrorMsg.textContent = `Error al obtener sugerencias: ${error.message}. Revisa la consola para más detalles.`;
+                aiErrorMsg.classList.remove('hidden');
+                aiSuggestionsContainer.classList.remove('hidden'); 
+            } finally {
+                aiButton.disabled = false;
+                aiLoadingMsg.classList.add('hidden');
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            fullParsedData = parseData(rawData);
+            currentFilteredData = [...fullParsedData]; 
+            
+            setupChartDOMContainers();
+            updateDashboard();
+
+            const searchInput = document.getElementById('searchInput');
+            if (searchInput) {
+                searchInput.addEventListener('input', (e) => {
+                    updateDashboard(e.target.value);
+                });
+            }
+            
+            const currentYearSpan = document.getElementById('currentYear');
+            if(currentYearSpan) {
+                currentYearSpan.textContent = new Date().getFullYear();
+            }
+
+            const aiButton = document.getElementById('getAISuggestionsBtn');
+            if (aiButton) {
+                aiButton.addEventListener('click', getAISuggestions);
+            }
+        });
+
+    </script>
+</body>
+</html>
