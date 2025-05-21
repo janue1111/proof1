@@ -454,6 +454,16 @@
             const aiSuggestionsContent = document.getElementById('aiSuggestionsContent');
             const aiErrorMsg = document.getElementById('aiErrorMessage');
 
+            // Verifica si la clave API está disponible
+            const apiKey = window.GEMINI_API_KEY; // Accede a la variable global
+            if (!apiKey) {
+                aiErrorMsg.textContent = "Error: La clave API de Gemini no está configurada. Por favor, configura la variable de entorno 'GEMINI_API_KEY' en Netlify.";
+                aiErrorMsg.classList.remove('hidden');
+                aiSuggestionsContainer.classList.remove('hidden'); 
+                aiSuggestionsContent.innerHTML = ''; 
+                return;
+            }
+
             if (!currentFilteredData || currentFilteredData.length === 0) {
                 aiErrorMsg.textContent = "No hay datos para analizar. Por favor, asegúrate de que el embudo de datos esté cargado.";
                 aiErrorMsg.classList.remove('hidden');
@@ -488,7 +498,6 @@ ${dataSummary}
 Sugerencias Específicas para E-commerce de Zapatos Escolares (Hombres, Padres de Familia):
             `;
 
-            const apiKey = ""; 
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
             
             const payload = {
